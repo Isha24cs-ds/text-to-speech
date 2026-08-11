@@ -4,7 +4,7 @@ A full-stack AI project that converts natural language questions into SQL querie
 
 ## Features
 
-* Natural language to SQL using Gemini API
+* Natural language to SQ
 * Clarification engine for ambiguous queries
 * SQLite database execution
 * React frontend
@@ -16,7 +16,7 @@ A full-stack AI project that converts natural language questions into SQL querie
 * React + Vite
 * Node.js + Express
 * SQLite
-* Google Gemini API
+
 
 ## Example Queries
 
