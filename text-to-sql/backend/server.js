@@ -6,6 +6,7 @@ const sqlite3 = require('sqlite3').verbose();
 
 const { detectAmbiguity } = require('./clarification');
 const { generateSQL } = require('./llm');
+const { getSchema } = require('./schema');
 
 const app = express();
 
@@ -15,7 +16,7 @@ app.use(express.json());
 // Connect SQLite database
 const db = new sqlite3.Database('./college.db');
 
-// Safety check
+// ---------- SQL Safety Check ----------
 function isSafeSQL(sql) {
   const forbidden = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'ALTER'];
 
@@ -24,7 +25,7 @@ function isSafeSQL(sql) {
   );
 }
 
-// API endpoint
+// ---------- API Route ----------
 app.post('/query', async (req, res) => {
   try {
     const { question } = req.body;
@@ -35,23 +36,34 @@ app.post('/query', async (req, res) => {
       });
     }
 
-    // Step 1: Clarification check
+    console.log('\\n------------------------------');
+    console.log('User Question:', question);
+
+    // Step 1: Read database schema dynamically
+    const schema = await getSchema();
+
+    console.log('Current Schema:', schema);
+
+    // Step 2: Clarification engine
     const clarification = detectAmbiguity(question);
 
     if (clarification.needClarification) {
+      console.log('Clarification needed:', clarification.clarification);
+
       return res.json({
         clarificationNeeded: true,
         clarification: clarification.clarification
       });
     }
 
-    // Step 2: Generate SQL
+    // Step 3: Generate SQL
     let sql = await generateSQL(question);
 
-    // Remove markdown if Gemini returns ```sql
-    sql = sql.replace(/```sql|```/g, '').trim();
+    sql = sql.trim();
 
-    // Step 3: Safety validation
+    console.log('Generated SQL:', sql);
+
+    // Step 4: Validate SQL
     if (!isSafeSQL(sql)) {
       return res.status(400).json({
         error: 'Only SELECT queries are allowed.',
@@ -59,24 +71,31 @@ app.post('/query', async (req, res) => {
       });
     }
 
-    // Step 4: Execute SQL
+    // Step 5: Execute SQL
     db.all(sql, [], (err, rows) => {
+
       if (err) {
+        console.error('SQL Error:', err.message);
+
         return res.status(500).json({
           error: err.message,
           sql
         });
       }
 
+      console.log('Rows returned:', rows.length);
+
+      // Step 6: Send response
       res.json({
         clarificationNeeded: false,
+        schema,
         sql,
         rows
       });
     });
 
   } catch (error) {
-    console.error(error);
+    console.error('Server Error:', error);
 
     res.status(500).json({
       error: error.message
@@ -84,7 +103,12 @@ app.post('/query', async (req, res) => {
   }
 });
 
-// Start server
+// ---------- Health Check ----------
+app.get('/', (req, res) => {
+  res.send('Text-to-SQL Backend is running!');
+});
+
+// ---------- Start Server ----------
 app.listen(5000, () => {
   console.log('Server running on http://localhost:5000');
 });
